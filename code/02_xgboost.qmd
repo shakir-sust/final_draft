@@ -1,0 +1,442 @@
+---
+title: "Data Science Applied to Ag - Final Project - ML"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    theme: cerulean
+author: Md Shakir Moazzem, Umar Munir
+---
+
+# Introduction
+
+This script contains ML Workflow with XGBoost
+
+## Loading libraries
+
+The following code chunk loads the required libraries.
+
+```{r}
+#| message: false
+#| warning: false
+
+#install.packages("tidymodels")   # Core framework for modeling (includes recipes, workflows, parsnip, etc.)
+#install.packages("finetune")     # Additional tuning strategies (e.g., racing, ANOVA-based tuning)
+#install.packages("vip")          # For plotting variable importance from fitted models
+#install.packages("xgboost")      # XGBoost implementation in R
+#install.packages("ranger")       # Fast implementation of Random Forests
+#install.packages("tidyverse")    # Data wrangling and visualization
+#install.packages("doParallel")   # For parallel computing (useful during resampling/tuning)
+#install.packages("caret")  
+#install.packages("xgboost") #new pacakage
+#install.packages("caret")
+
+library(tidymodels)   # Core framework for modeling (includes recipes, workflows, parsnip, etc.)
+library(finetune)     # Additional tuning strategies (e.g., racing, ANOVA-based tuning)
+library(vip)          # For plotting variable importance from fitted models
+library(xgboost)      # XGBoost implementation in R
+library(ranger)       # Fast implementation of Random Forests
+library(tidyverse)    # Data wrangling and visualization
+library(doParallel)   # For parallel computing (useful during resampling/tuning)
+library(caret)       # Other great library for Machine Learning 
+```
+
+## Loading the data set
+
+The following code chunk will load the "weather_monthsum.csv" data set
+
+```{r weather}
+
+weather <- read_csv("../data/weather_monthsum.csv")
+
+weather
+
+```
+
+# ML workflow
+
+## 1. Pre-processing
+
+The following code chunk will conduct pre-processing.
+
+```{r weather_split}
+
+set.seed(931735) # Setting seed to get reproducible results 
+
+weather_split <- initial_split(
+  weather, 
+  prop = .7, # proption of split same as previous codes
+  strata = yield  # Stratify by target variable
+  )
+
+weather_split
+
+```
+
+### a. Data split
+
+The following code chunks will conduct data split (70% training / 30% testing).
+
+```{r weather_train}
+
+weather_train <- training(weather_split)  # 70% of data
+
+weather_train #This is your traing data frame
+
+```
+
+```{r weather_test}
+
+weather_test <- testing(weather_split)    # 30% of data
+
+weather_test
+
+```
+
+### b. Distribution of target variable "yield"
+
+The following code chunk will create a density plot of target variable "yield"
+
+```{r distribution}
+
+ggplot() +
+  geom_density(data = weather_train, 
+               aes(x = yield),
+               color = "red") +
+  geom_density(data = weather_test, 
+               aes(x = yield),
+               color = "blue") 
+  
+
+```
+
+### c. Data processing with recipe
+
+The following code chunk will conduct data processing with recipe
+
+```{r weather_recipe}
+
+# Create recipe for data preprocessing
+weather_recipe <- recipe(yield ~ ., data = weather_train) %>% 
+  # Remove identifier columns and months not in growing season
+  step_rm(
+    year,       # Remove year identifier
+    site,       # Remove site identifier
+    hybrid,     # Remove site identifier
+    matches("Jan|Feb|Mar|Dec")  # Remove non-growing season months
+  ) 
+
+
+weather_recipe
+
+```
+
+The following code chunk will prep the recipe to estimate any required statistics.
+
+```{r weather_prep}
+# Prep the recipe to estimate any required statistics
+weather_prep <- weather_recipe %>% 
+  prep()
+
+# Examine preprocessing steps
+weather_prep
+```
+
+## 2. Training
+
+### a. Model specification
+
+The following code chunk will fine tune the XgBoost hyperparameters.
+
+```{r xgb_spec}
+
+xgb_spec <- boost_tree(
+  trees = tune(),
+  tree_depth = tune(),  # Maximum depth of each tree
+  min_n = tune(),  # Minimum samples required to split a node
+  learn_rate = tune()
+  ) %>% #Specifying XgBoost as our model type, asking to tune the hyperparameters
+  set_engine("xgboost") %>% #specify engine 
+  set_mode("regression")  # Set to mode
+      
+xgb_spec
+
+```
+
+### b. Cross-validation setup
+
+The following code chunk will conduct 5-fold cross-validation to evaluate model performance during tuning.
+
+```{r}
+
+set.seed(235) #34549
+
+resampling_foldcv <- vfold_cv(weather_train, 
+                              v = 5)
+
+resampling_foldcv
+
+resampling_foldcv$splits[[1]]
+
+```
+
+### c. Hyperparameter grid with Latin Hypercube Sampling
+
+The following code chunk will use Latin hypercube sampling to generate a diverse grid of hyperparameter combinations.
+
+```{r }
+
+xgb_grid <- grid_latin_hypercube(
+  trees(),
+  tree_depth(),
+  min_n(),
+  learn_rate(),
+  size = 20
+)
+
+xgb_grid
+
+```
+
+The following code chunk will plot the hyperparameter combinations.
+
+```{r}
+ggplot(data = xgb_grid,
+       aes(x = tree_depth, 
+           y = min_n)) +
+  geom_point(aes(color = factor(learn_rate), #coloring the bubbles based on learn_rate
+                 size = trees), #size of the bubbles are based on the tress
+             alpha = .5,
+             show.legend = FALSE)
+```
+
+## 3. Model Tuning
+
+The following code chunk will conduct model tuning.
+
+```{r xgb_grid_result}
+
+#install.packages("doParallel")
+#install.packages("parallel")
+
+library(doParallel)
+library(parallel)
+
+set.seed(76544)
+
+#parallel processing
+#registerDoParallel(cores = parallel::detectCores()-1) #starts parallel processing
+
+xgb_res <- tune_race_anova(object = xgb_spec,
+                      preprocessor = weather_recipe,
+                      resamples = resampling_foldcv,
+                      grid = xgb_grid,
+                      control = control_race(save_pred = TRUE))
+
+#stopImplicitCluster() #ends parallel processing
+
+beepr::beep()
+
+xgb_res$.metrics[[2]]
+
+```
+
+## 4. Select Best Models
+
+We select the best models using three strategies (lowest RMSE, highest R2, within 1 SE, within 2% loss).
+
+The following code chunk will select best model based on lowest RMSE.
+
+```{r}
+
+# Based on lowest RMSE
+best_rmse <- xgb_res %>% 
+  select_best(metric = "rmse")%>% 
+  mutate(source = "best_rmse")
+
+best_rmse
+
+```
+
+The following code chunk will select best model based on lowest RMSE within 1% loss
+
+```{r}
+# Based on lowest RMSE within 1% loss
+best_rmse_pct_loss <- xgb_res %>% 
+  select_by_pct_loss("min_n",
+                     metric = "rmse",
+                     limit = 1
+                     )%>% 
+  mutate(source = "best_rmse_pct_loss")
+
+best_rmse_pct_loss
+```
+
+The following code chunk will select best model based on lowest RMSE within 1 SE.
+
+```{r}
+# Based on lowest RMSE within 1 se
+best_rmse_one_std_err <- xgb_res %>% 
+  select_by_one_std_err(metric = "rmse",
+                        eval_time = 100,
+                        trees
+                        )%>% 
+  mutate(source = "best_rmse_one_std_err")
+
+best_rmse_one_std_err
+```
+
+The following code chunk will select best model based on greatest R2.
+
+```{r}
+# Based on greatest R2
+best_r2 <- xgb_res %>% 
+  select_best(metric = "rsq")%>% 
+  mutate(source = "best_r2")
+
+best_r2
+```
+
+The following code chunk will select best model based on greatest R2 within 1% loss.
+
+```{r}
+# Based on greatest R2 within 1% loss
+best_r2_pct_loss <- xgb_res %>% 
+  select_by_pct_loss("min_n",
+                     metric = "rsq",
+                     limit = 1
+                     ) %>% 
+  mutate(source = "best_r2_pct_loss")
+
+best_r2_pct_loss
+```
+
+The following code chunk will select best model based on greatest R2 within 1 SE
+
+```{r}
+# Based on greatest R2 within 1 se
+best_r2_one_std_error <- xgb_res %>% 
+  select_by_one_std_err(metric = "rsq",
+                        eval_time = 100,
+                        trees
+                        ) %>%
+  mutate(source = "best_r2_one_std_error")
+
+best_r2_one_std_error
+```
+
+## Compare and Finalize Model
+
+The following code chunk will compare all models
+
+```{r comparing values}
+best_rmse %>% 
+  bind_rows(best_rmse_pct_loss, 
+            best_rmse_one_std_err, 
+            best_r2, 
+            best_r2_pct_loss, 
+            best_r2_one_std_error)
+```
+
+## 5. Final Specification
+
+The following code chunk will conduct final specification.
+
+```{r final_spec_fit}
+final_spec <- boost_tree(
+  trees = best_r2$trees,           # Number of boosting rounds (trees)
+  tree_depth = best_r2$tree_depth, # Maximum depth of each tree
+  min_n = best_r2$min_n,           # Minimum number of samples to split a node
+  learn_rate = best_r2$learn_rate  # Learning rate (step size shrinkage)
+) %>%
+  set_engine("xgboost") %>%
+  set_mode("regression")
+
+final_spec
+```
+
+## 6. Final Fit and Predictions
+
+## Validation
+
+The following code chunk will conduct validation.
+
+```{r final_fit}
+set.seed(10)
+final_fit <- last_fit(final_spec,
+                weather_recipe,
+                split = weather_split)
+
+final_fit %>%
+  collect_predictions()
+```
+
+## 7. Evaluate on *Test Set*
+
+The following code chunk will evaluate fit metrics on the test set.
+
+```{r final_fit_metrics}
+final_fit %>%
+  collect_metrics()
+```
+
+## 8. Evaluate on Training Set
+
+The following code chunk will evaluate fit metrics on the training set.
+
+```{r}
+final_spec %>%
+  fit(yield ~ .,
+      data = bake(weather_prep, 
+                  weather_train)) %>%
+  augment(new_data = bake(weather_prep, 
+                          weather_train)) %>% 
+  rmse(yield, .pred) %>%
+  bind_rows(
+    
+    
+# R2
+final_spec %>%
+  fit(yield ~ .,
+      data = bake(weather_prep, 
+                  weather_train)) %>%
+  augment(new_data = bake(weather_prep, 
+                          weather_train)) %>% 
+  rsq(yield, .pred))
+```
+
+## 9. Predicted vs Observed Plot
+
+The following code chunk will create a Predicted vs Observed Plot.
+
+```{r}
+final_fit %>%
+  collect_predictions() %>%
+  ggplot(aes(x = yield,
+             y = .pred)) +
+  geom_point() +
+  geom_abline() +
+  geom_smooth(method = "lm") +
+  scale_x_continuous() +
+  scale_y_continuous() 
+```
+
+## 10. Variable Importance
+
+The following code chunk will create a Variable Importance plot.
+
+```{r final_spec}
+final_spec %>%
+  fit(yield ~ .,
+         data = bake(weather_prep, weather_train)) %>% #There little change in variable improtance if you use full dataset
+    vi() %>%
+  mutate(
+    Variable = fct_reorder(Variable, 
+                           Importance)
+  ) %>%
+  ggplot(aes(x = Importance, 
+             y = Variable)) +
+  geom_col() +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(y = NULL)
+```
