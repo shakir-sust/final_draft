@@ -440,3 +440,128 @@ final_spec %>%
   scale_x_continuous(expand = c(0, 0)) +
   labs(y = NULL)
 ```
+
+
+# Obtaining "yield" prediction on the "testing_submission.csv" data set
+
+[Note: before using it, make sure that the code below actually works]
+
+```{r}
+
+# Reading & cleaning testing data 
+
+submission   <- read_csv("../data/testing/testing_submission.csv") %>% 
+  mutate(site = str_remove_all(site, "[a-z]"),
+         site = str_replace(site, "-.*$", ""),
+         site = str_replace(site, "_.*$", ""))
+
+meta_test    <- read_csv("../data/testing/testing_meta.csv")  %>% 
+  rename(lon = longitude, lat = latitude) %>% 
+  mutate(site = str_remove_all(site, "[a-z]"),
+         site = str_replace(site, "-.*$", ""),
+         site = str_replace(site, "_.*$", "")) %>% 
+  distinct(year, site, .keep_all = TRUE) %>% 
+  select(-previous_crop)
+
+soil_test    <- read_csv("../data/testing/testing_soil.csv")  %>% 
+  mutate(site = str_remove_all(site, "[a-z]"),
+         site = str_replace(site, "-.*$", ""),
+         site = str_replace(site, "_.*$", ""))
+
+test_base <- submission %>%
+  left_join(soil_test, by = c("year","site")) %>%
+  left_join(meta_test, by = c("year","site"))
+
+# Downloading Daymet weather for 2024 site‐years 
+site_year_test <- test_base %>% 
+  select(year, site, lon, lat) %>% 
+  distinct()
+
+weather_test <- site_year_test %>%
+  mutate(weather = pmap(
+    list(.y = year, .site = site, .lat = lat, .lon = lon),
+    ~ download_daymet(site = .site,
+                      lat   = .lat,
+                      lon   = .lon,
+                      start = .y,
+                      end   = .y,
+                      simplify = TRUE,
+                      silent = TRUE)
+  )) %>%
+  select(year, site, weather) %>%
+  unnest(weather) %>%
+  pivot_wider(names_from = measurement, values_from = value) %>%
+  #clean_names()
+
+test_full <- test_base %>%
+  left_join(weather_test, by = c("year","site"))
+
+# Feature engineering monthly summaries for 2024 site‐years
+fe_test <- test_full %>%
+  # creating date & month
+  mutate(date = as.Date(paste0(year, "/", yday), "%Y/%j"),
+         month_abb = month(date, label = TRUE)) %>%
+  # selecting and renaming to match training
+  transmute(
+    year, site, hybrid,
+    month_abb,
+    soil.ph       = soilp_h,    # will have to adjust these names if the clean_names() differ
+    soil.om.pct   = om_pct,
+    soil.k.ppm    = soilk_ppm,
+    soil.p.ppm    = soilp_ppm,
+    dayl.s        = dayl_s,
+    prcp.mm       = prcp_mm_day,
+    srad.wm2      = srad_w_m_2,
+    tmax.c        = tmax_deg_c,
+    tmin.c        = tmin_deg_c,
+    vp.pa         = vp_pa
+  ) %>%
+  group_by(year, site, hybrid, month_abb) %>%
+  summarise(
+    mean_soil.ph     = mean(soil.ph,   na.rm = TRUE),
+    mean_soil.om.pct = mean(soil.om.pct, na.rm = TRUE),
+    mean_soil.k.ppm  = mean(soil.k.ppm,  na.rm = TRUE),
+    mean_soil.p.ppm  = mean(soil.p.ppm,  na.rm = TRUE),
+    mean_dayl.s      = mean(dayl.s,      na.rm = TRUE),
+    sum_prcp.mm      = sum(prcp.mm,      na.rm = TRUE),
+    mean_srad.wm2    = mean(srad.wm2,    na.rm = TRUE),
+    mean_tmax.c      = mean(tmax.c,      na.rm = TRUE),
+    mean_tmin.c      = mean(tmin.c,      na.rm = TRUE),
+    mean_vp.pa       = mean(vp.pa,       na.omit = TRUE)
+  ) %>%
+  ungroup() %>%
+  pivot_longer(
+    cols = starts_with(c("mean_", "sum_")),
+    names_to = "name",
+    values_to = "value"
+  ) %>%
+  mutate(varname = paste0(name, "_", month_abb)) %>%
+  select(-name, -month_abb) %>%
+  pivot_wider(names_from = varname, values_from = value) %>%
+  select(-ends_with("_NA"))
+
+# writing into .csv file to directly use in random forest predictions
+write_csv(fe_test,
+          "../data/testing/testing_submission_fe_test.csv")
+
+# Prepping test features & prediction 
+test_prepped  <- bake(weather_prep, new_data = fe_test)
+
+# fitting final model on all training data
+final_model   <- final_spec %>% 
+  fit(yield ~ ., data = bake(weather_prep, weather))
+
+# generating predictions
+predictions   <- predict(final_model, new_data = test_prepped)
+
+# binding back 
+submission_pred <- fe_test %>% 
+  select(year, site, hybrid) %>% 
+  bind_cols(predictions)
+
+write_csv(submission_pred,
+          "../data/testing/testing_submission_pred_xgboost.csv")
+
+
+```
+
