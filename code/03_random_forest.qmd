@@ -181,7 +181,9 @@ resampling_foldcv$splits[[1]]
 resampling_foldcv$splits[[2]]
 ```
 
-In the algorithm below, we are asking for 50 iterations.  
+### c. Grid search based on simulated annealing 
+
+*Note: the following code chunk took ~18 hrs to run*
 
 The following code chunk will conduct grid search to fine tune the model based on an iterative search algorithm called simulated annealing.
 
@@ -200,6 +202,52 @@ beepr::beep()
 
 rf_grid_result
 rf_grid_result$.metrics[[2]]
+```
+
+### c. Hyperparameter grid with Latin Hypercube Sampling
+
+*Note: do not run the above chunk if you plan to run the following 2 chunks*
+
+The following code chunk will use Latin hypercube sampling to generate a diverse grid of hyperparameter combinations.
+
+```{r }
+
+rf_grid_latin <- grid_latin_hypercube(
+  trees(),
+  mtry(),
+  size = 20
+)
+
+rf_grid_latin
+
+```
+The following code chunk will conduct model tuning.
+
+```{r xgb_grid_result}
+
+#install.packages("doParallel")
+#install.packages("parallel")
+
+library(doParallel)
+library(parallel)
+
+set.seed(76544)
+
+#parallel processing
+#registerDoParallel(cores = parallel::detectCores()-1) #starts parallel processing
+
+rf_grid_result <- tune_race_anova(object = rf_spec,
+                      preprocessor = weather_recipe,
+                      resamples = resampling_foldcv,
+                      grid = rf_grid_latin,
+                      control = control_race(save_pred = TRUE))
+
+#stopImplicitCluster() #ends parallel processing
+
+beepr::beep()
+
+xgb_res$.metrics[[2]]
+
 ```
 
 The following code chunk will collect RMSE as a summary of metrics (across all folds, for each iteration), and plot them (the lower the RMSE, the better).
