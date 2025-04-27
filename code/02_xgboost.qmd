@@ -53,6 +53,106 @@ weather
 
 ```
 
+# EDA on predictors   
+
+The following code chunk will print ridge plots to visualize the distribution of the following soil-related predictors: "mean_soil.ph_Sep", "mean_soil.om.pct_Sep", "mean_soil.k.ppm_Sep", and "mean_soil.p.ppm_Sep".  
+
+```{r message=F, warning=F}
+
+#install.packages("tidyverse")
+#install.packages("ggridges")
+#install.packages("viridis")
+#install.packages("purrr")
+
+library(tidyverse)
+library(ggridges)
+library(viridis)
+library(purrr)
+
+# Specifying the four variables 
+selected_vars <- c(
+  "mean_soil.ph_Sep",
+  "mean_soil.om.pct_Sep",
+  "mean_soil.k.ppm_Sep",
+  "mean_soil.p.ppm_Sep"
+)
+
+# Walking over them, computing a per‐variable scale, and printing one ridge plot per var
+walk(
+  selected_vars,
+  function(var) {
+    # estimate density to find its max height
+    dens      <- density(weather[[var]], na.rm = TRUE)
+    scale_val <- 1 / max(dens$y, na.rm = TRUE)
+
+    soil_eda_sep <- ggplot(weather, aes(x = .data[[var]], y = var, fill = stat(x))) +
+      geom_density_ridges_gradient(
+        scale          = scale_val,
+        rel_min_height = 0.01
+      ) +
+      scale_fill_viridis_c(option = "C") +
+      labs(
+        title = paste("Distribution of", var),
+        x     = "Value",
+        y     = NULL
+      ) +
+      theme_ridges() +
+      theme(
+        legend.position = "none",
+        axis.text.y     = element_blank()
+      )
+
+    print(soil_eda_sep)
+  }
+)
+
+
+```
+The following code chunk will print ridge plots to visualize the distribution of the following weather-related predictors: "mean_srad.wm2_Sep", "mean_tmax.c_Sep", "mean_tmin.c_Sep", "mean_vp.pa_Sep", "sum_prcp.mm_Sep"
+
+
+```{r}
+
+# Specifying exactly the five Sep weather predictors 
+selected_vars <- c(
+  "mean_srad.wm2_Sep",
+  "mean_tmax.c_Sep",
+  "mean_tmin.c_Sep",
+  "mean_vp.pa_Sep",
+  "sum_prcp.mm_Sep"
+)
+
+# Iterating with walk(), computing a per‐variable scale and printing one ridge plot per var
+walk(
+  selected_vars,
+  function(var) {
+    # compute density to get max height for scaling
+    dens      <- density(weather[[var]], na.rm = TRUE)
+    scale_val <- 1 / max(dens$y, na.rm = TRUE)
+
+    weather_eda_sep <- ggplot(weather, aes(x = .data[[var]], y = var, fill = stat(x))) +
+      geom_density_ridges_gradient(
+        scale          = scale_val,
+        rel_min_height = 0.01
+      ) +
+      scale_fill_viridis_c(option = "C") +
+      labs(
+        title = paste("Distribution of", var),
+        x     = "Value",
+        y     = NULL
+      ) +
+      theme_ridges() +
+      theme(
+        legend.position = "none",
+        axis.text.y     = element_blank()
+      )
+
+    print(weather_eda_sep)
+  }
+)
+
+```
+
 # ML workflow
 
 ## 1. Pre-processing
@@ -102,7 +202,7 @@ The following code chunk will create a density plot to compare target variable "
 
 ```{r distribution}
 
-ggplot() +
+EDA_yield <- ggplot() +
   geom_density(data = weather_train, 
                aes(x = yield),
                color = "red") +
@@ -110,6 +210,8 @@ ggplot() +
                aes(x = yield),
                color = "blue") 
   
+
+EDA_yield
 
 ```
 
