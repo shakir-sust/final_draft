@@ -219,6 +219,8 @@ Note: The plot will not generate if "min_n" and "learn_rate" were not fine tuned
 
 The following code chunk will conduct model tuning.
 
+Note: It took 1 hr 40 min to run the code chunk below.
+
 ```{r xgb_grid_result}
 
 #install.packages("doParallel")
@@ -348,16 +350,18 @@ best_rmse %>%
 The following code chunk will conduct final specification.
 
 ```{r final_spec_fit}
+
 final_spec <- boost_tree(
   trees = best_r2$trees,           # Number of boosting rounds (trees)
   tree_depth = best_r2$tree_depth, # Maximum depth of each tree
-  min_n = best_r2$min_n,           # Minimum number of samples to split a node
-  learn_rate = best_r2$learn_rate  # Learning rate (step size shrinkage)
+  #min_n = best_r2$min_n,           # Minimum number of samples to split a node
+  #learn_rate = best_r2$learn_rate  # Learning rate (step size shrinkage)
 ) %>%
   set_engine("xgboost") %>%
   set_mode("regression")
 
 final_spec
+
 ```
 
 ## 6. Final Fit and Predictions
@@ -367,13 +371,18 @@ final_spec
 The following code chunk will conduct the final fit and collect predictions on the final fit.
 
 ```{r final_fit}
+
 set.seed(10)
+
+#rm(final_fit)
+
 final_fit <- last_fit(final_spec,
                 weather_recipe,
                 split = weather_split)
 
 final_fit %>%
   collect_predictions()
+
 ```
 
 ## 7. Evaluate on *Test Set*
@@ -438,36 +447,45 @@ library(dplyr)
 library(ggplot2)
 library(yardstick)
 
-# 1. Collecting predictions from final fit
-preds <- final_fit %>%
+# collecting predictions & computing metrics
+preds <- final_fit %>% 
   collect_predictions()
 
-# 2. Computing RMSE & R² using yardstick
 metrics_tbl <- preds %>%
   metrics(truth = yield, estimate = .pred) %>%
-  filter(.metric %in% c("rmse", "rsq")) %>%
-  pivot_wider(names_from  = .metric,
-              values_from = .estimate)
+  filter(.metric %in% c("rmse","rsq")) %>%
+  pivot_wider(names_from = .metric, values_from = .estimate)
 
 rmse_val <- metrics_tbl$rmse
 r2_val   <- metrics_tbl$rsq
 
-# 3. Plotting Predicted vs Observed and annotate with metrics
-ggplot(preds, aes(x = yield, y = .pred)) +
+# calculating dynamic offsets
+y_rng     <- range(preds$.pred, na.rm = TRUE)
+x_rng     <- range(preds$yield, na.rm = TRUE)
+y_offset  <- diff(y_rng) * 0.04  # move 10% of y-range upward
+x_offset  <- diff(x_rng) * 0.02  # (optional) small right‐shift
+
+# plotting the predicted vs observed plot with R² & RMSE
+pred_vs_obs_plot <-
+  ggplot(preds, aes(x = yield, y = .pred)) +
   geom_point(alpha = 0.6) +
-  geom_abline(linetype = "dashed") +
+  geom_abline(linetype = "solid") +
   geom_smooth(method = "lm", se = FALSE) +
   annotate(
     "text",
-    x     = min(preds$yield, na.rm = TRUE),
-    y     = max(preds$.pred, na.rm = TRUE),
+    x     = x_rng[1] + x_offset,
+    y     = y_rng[2] + y_offset,
     label = sprintf("R² = %.3f\nRMSE = %.2f", r2_val, rmse_val),
     hjust = 0,
-    vjust = 1
+    vjust = 0
   ) +
   scale_x_continuous(name = "Observed Yield") +
   scale_y_continuous(name = "Predicted Yield") +
   ggtitle("Predicted vs Observed Yield with R² & RMSE")
+
+
+pred_vs_obs_plot
+
 
 ```
 
@@ -478,7 +496,8 @@ ggplot(preds, aes(x = yield, y = .pred)) +
 The following code chunk will create a Variable Importance plot.
 
 ```{r final_spec}
-final_spec %>%
+
+var_imp_plot <- final_spec %>%
   fit(yield ~ .,
          data = bake(weather_prep, weather_train)) %>% #There little change in variable improtance if you use full dataset
     vi() %>%
@@ -491,6 +510,9 @@ final_spec %>%
   geom_col() +
   scale_x_continuous(expand = c(0, 0)) +
   labs(y = NULL)
+
+var_imp_plot
+
 ```
 
 
