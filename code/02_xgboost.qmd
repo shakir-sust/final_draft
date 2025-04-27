@@ -617,6 +617,26 @@ var_imp_plot
 
 ```
 
+# Saving the objects in the environmet to load in shiny app script
+
+```{r}
+
+# Save everything into one .RData file 
+
+save(
+  weather, weather_split, weather_train, weather_test,
+  EDA_yield, weather_recipe, weather_prep,
+  xgb_spec, resampling_foldcv, xgb_grid, xgb_res,
+  best_rmse, best_rmse_pct_loss, best_rmse_one_std_err,
+  best_r2, best_r2_pct_loss, best_r2_one_std_error,
+  final_spec, final_fit, preds, metrics_tbl,
+  pred_vs_obs_plot, var_imp_plot,
+  file = "xgboost_objects.RData"
+)
+
+```
+
+
 
 # Obtaining "yield" prediction on the "testing_submission.csv" data set
 
