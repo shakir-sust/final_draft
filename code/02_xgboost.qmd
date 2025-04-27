@@ -14,7 +14,7 @@ This script contains ML Workflow with XGBoost
 
 ## Loading libraries
 
-The following code chunk loads the required libraries.
+The following code chunk will load necessary packages.
 
 ```{r}
 #| message: false
@@ -43,7 +43,7 @@ library(caret)       # Other great library for Machine Learning
 
 ## Loading the data set
 
-The following code chunk will load the "weather_monthsum.csv" data set
+The following code chunk will load the "weather_monthsum.csv" data set.
 
 ```{r weather}
 
@@ -57,7 +57,9 @@ weather
 
 ## 1. Pre-processing
 
-The following code chunk will conduct pre-processing.
+### a. Data split
+
+The following code chunks will conduct data split (70% training / 30% testing).
 
 ```{r weather_split}
 
@@ -73,9 +75,7 @@ weather_split
 
 ```
 
-### a. Data split
-
-The following code chunks will conduct data split (70% training / 30% testing).
+The following code chunk will conduct setting train set.
 
 ```{r weather_train}
 
@@ -84,6 +84,9 @@ weather_train <- training(weather_split)  # 70% of data
 weather_train #This is your traing data frame
 
 ```
+
+The following code chunk will conduct setting test split.
+
 
 ```{r weather_test}
 
@@ -95,7 +98,7 @@ weather_test
 
 ### b. Distribution of target variable "yield"
 
-The following code chunk will create a density plot of target variable "yield"
+The following code chunk will create a density plot to compare target variable "yield" in the training and test set.
 
 ```{r distribution}
 
@@ -112,7 +115,7 @@ ggplot() +
 
 ### c. Data processing with recipe
 
-The following code chunk will conduct data processing with recipe
+The following code chunk will conduct data processing with recipe.
 
 ```{r weather_recipe}
 
@@ -146,7 +149,7 @@ weather_prep
 
 ### a. Model specification
 
-The following code chunk will fine tune the XgBoost hyperparameters.
+The following code chunk will fine tune the "trees", "tree_depth", "min_n", and "learn_rate" XgBoost hyperparameters.
 
 ```{r xgb_spec}
 
@@ -359,7 +362,7 @@ final_spec
 
 ## Validation
 
-The following code chunk will conduct validation.
+The following code chunk will conduct the final fit and collect predictions on the final fit.
 
 ```{r final_fit}
 set.seed(10)

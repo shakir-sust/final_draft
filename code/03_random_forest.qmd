@@ -1,0 +1,387 @@
+---
+title: "Data Science Applied to Ag - Final Project - ML"
+format:
+  html:
+    embed-resources: true
+    toc: true
+    theme: cerulean
+author: Md Shakir Moazzem, Umar Munir
+---
+
+# Introduction  
+
+This script contains ML Workflow with random forest. 
+
+# Setup  
+
+## Loading packages  
+
+The following code chunk will load necessary packages.
+
+```{r Setup, message=F, warning=F}
+
+# Installing packages
+
+#install.packages("tidyverse")
+#install.packages("readxl")
+#install.packages("janitor")
+#install.packages("dplyr")
+#install.packages("tidyr")
+#install.packages("readr")
+#install.packages("lubridata")
+#install.packages("stringr")
+#install.packages("ranger") 
+#install.packages("vip")
+#install.packages("ranger")
+#install.packages("finetune")
+
+# Loading packages 
+
+library(readxl) 
+library(janitor) 
+library(dplyr) 
+library(tidyr) 
+library(readr) 
+library(lubridate)
+library(stringr)
+library(tidymodels)
+library(tidyverse) 
+library(vip)
+library(ranger)
+library(finetune)
+
+```
+
+## Data import
+
+The following code chunk will import "weather_monthsum.csv" data file.
+
+```{r import, message=F, warning=F}
+weather <- read_csv("../data/weather_monthsum.csv")
+
+weather
+```
+
+# ML workflow  
+
+## 1. Pre-processing  
+
+### a. Data split  
+
+The following code chunks will conduct data split (70% training / 30% testing).
+
+```{r weather_split, message=F, warning=F}
+# Setting seed to get reproducible results  
+set.seed(931735)
+
+# Setting split level  
+weather_split <- initial_split(weather, 
+                               prop = .7,
+                               strata = yield) # strata = yield: to do stratified sampling based on yield to make sure the distribution of strength across training and testing are similar
+
+weather_split
+```
+The following code chunk will conduct setting train set.
+
+```{r weather_train, message=F, warning=F}
+# Setting train set 
+weather_train <- training(weather_split)
+
+weather_train
+```
+
+The following code chunk will conduct setting test split.
+
+
+```{r weather_test, message=F, warning=F}
+# Setting test split
+weather_test <- testing(weather_split)
+
+weather_test
+```
+
+### b. Distribution of target variable "yield"
+
+The following code chunk will create a density plot to compare target variable "yield" in the training and test set.
+
+```{r distribution, message=F, warning=F}
+ggplot() +
+  geom_density(data = weather_train, 
+               aes(x = yield),
+               color = "red") +
+  geom_density(data = weather_test, 
+               aes(x = yield),
+               color = "blue") 
+  
+```
+
+### c. Data processing with recipe
+
+The following code chunk will conduct data processing with recipe.
+
+```{r weather_recipe}
+weather_recipe <-
+  # Defining predicted and predictor variables
+  recipe(yield ~ .,
+         data = weather_train) %>%
+  # Removing year and site  
+    step_rm(year, 
+            site, 
+            hybrid,
+            matches("Jan|Feb|Mar|Apr|Nov|Dec")) #%>%
+  # Normalizing all numeric variables except predicted variable
+  #step_normalize(all_numeric(), -all_outcomes())
+
+weather_recipe
+```
+
+The following code chunk will prep the recipe to estimate any required statistics.
+
+
+```{r weather_prep}
+weather_prep <- weather_recipe %>%
+  prep()
+
+weather_prep
+```
+
+## 2. Training
+
+### a. Model specification
+
+The following code chunk will conduct model specification.
+  
+```{r rf_spec}
+
+rf_spec <- 
+  # Specifying random forest as our model type, asking to tune the hyperparameters
+  rand_forest(trees = tune(),
+              mtry = tune() #both "trees" and "mtry" are model-type level hyperparameters, meaning that we fine tune "trees" and "mtry" inside "rand_forest()"
+              ) %>%
+    # Specify the engine (= package)
+    set_engine("ranger") %>% #specifying "ranger" as the engine/package to run random forest 
+    # Specifying mode  
+    set_mode("regression") #random forest can handle both regression (when y is numerical) and classification (when y is categorical) #Here, we are specifying "set_mode("regression")" because our y variable is numerical [continuous]
+
+rf_spec
+
+```
+
+### b. Cross-validation setup
+
+The following code chunk will conduct 5-fold cross-validation to evaluate model performance during tuning.
+
+```{r resampling_foldcv}
+set.seed(34549)
+resampling_foldcv <- vfold_cv(weather_train, 
+                              v = 5) #but at least 10 folds are recommended
+
+resampling_foldcv
+resampling_foldcv$splits[[1]]
+resampling_foldcv$splits[[2]]
+```
+
+In the algorithm below, we are asking for 50 iterations.  
+
+The following code chunk will conduct grid search to fine tune the model based on an iterative search algorithm called simulated annealing.
+
+```{r rf_grid_result}
+
+set.seed(76544)
+
+rf_grid_result <- tune_sim_anneal(object = rf_spec,
+                     preprocessor = weather_recipe,
+                     resamples = resampling_foldcv,
+                    #param_info = rf_param,
+                    iter = 5 
+                     )
+
+beepr::beep() 
+
+rf_grid_result
+rf_grid_result$.metrics[[2]]
+```
+
+The following code chunk will collect RMSE as a summary of metrics (across all folds, for each iteration), and plot them (the lower the RMSE, the better).
+
+```{r RMSE}
+rf_grid_result %>%
+  collect_metrics() %>%
+  filter(.metric == "rmse") %>%
+  ggplot(aes(x = mtry, 
+             y = trees 
+             )) +
+  geom_path(group = 1) +
+  geom_point(aes(color = mean),
+             size = 3) + 
+  scale_color_viridis_b() +
+  geom_text(aes(label = .iter), nudge_x = .0005) +
+  labs(title = "RMSE")
+```
+
+The following code chunk will collect R2 as a summary of metrics (across all folds, for each iteration), and plot them (the higher the R2, the better).
+
+
+```{r R2}
+rf_grid_result %>%
+  collect_metrics() %>%
+  filter(.metric == "rsq") %>%
+  ggplot(aes(x = mtry, 
+             y = trees 
+             )) +
+  geom_path(group = 1) +
+  geom_point(aes(color = mean),
+             size = 3) + 
+  scale_color_viridis_b() +
+  geom_text(aes(label = .iter), nudge_x = .0005) +
+  labs(title = "R2")
+
+```
+
+The following code chunk will select the best model by "2 percent loss" of RMSE.
+
+```{r 2% loss of RMSE}
+# Based on lowest RMSE
+best_rmse <- rf_grid_result %>%
+  select_by_pct_loss("trees",
+                     metric = "rmse",
+                     limit = 2 #"limit = 2": this is how many percent losses you are accepting, 2% in this case
+                     )
+
+best_rmse
+
+```
+
+The following code chunk will select the best model by "2 percent loss" of R2.
+
+```{r 2% loss of R2}
+# Based on greatest R2
+best_r2 <- rf_grid_result %>%
+  select_by_pct_loss("trees",
+                     metric = "rsq",
+                     limit = 2
+                     )
+
+
+best_r2
+
+```
+
+
+The following code chunk will use the hyperparameter values that optimized R2 to fit our final model.
+
+```{r final_spec}
+final_spec <- rand_forest(trees = best_r2$trees,
+                          mtry = best_r2$mtry) %>%
+  # Specify the engine
+  set_engine("ranger",
+             importance = "permutation" #"permutation" is how we look into variable importance in random forest
+             ) %>%
+    # Specifying mode  
+  set_mode("regression")
+  
+
+final_spec
+```
+
+# 3. Validation  
+
+Now that we determined our best model, let's do our **last fit**.
+
+
+
+The following code chunk will conduct the final fit and collect predictions.
+
+```{r final_fit}
+
+set.seed(10)
+
+final_fit <- last_fit(final_spec, 
+                weather_recipe,
+                split = weather_split)
+
+final_fit %>%
+  collect_predictions()
+```
+
+
+## Evaluate Fit Metrics on Test Set
+
+The following code chunk will collect fit metrics on the test set.
+
+
+```{r Fit Metrics on Test Set}
+final_fit %>%
+  collect_metrics()
+```
+
+
+## Evaluate Fit Metrics on Training Set
+
+The following code chunk will evaluate fit metrics on the train set.
+
+```{r Fit Metrics on Training Set}
+# RMSE
+final_spec %>%
+  fit(yield ~ .,
+      data = bake(weather_prep, 
+                  weather_train)) %>%
+  augment(new_data = bake(weather_prep, 
+                          weather_train)) %>% 
+  rmse(yield, .pred) %>%
+  bind_rows(
+    
+    
+    # R2
+    final_spec %>%
+      fit(yield ~ .,
+          data = bake(weather_prep, 
+                      weather_train)) %>%
+      augment(new_data = bake(weather_prep, 
+                              weather_train)) %>% 
+      rsq(yield, .pred)
+    
+  )
+
+```
+
+## Predicted vs Observed Plot
+
+The following code chunk will create a Predicted vs Observed Plot.
+
+```{r Predicted vs Observed Plot}
+
+final_fit %>%
+  collect_predictions() %>%
+  ggplot(aes(x = yield,
+             y = .pred)) +
+  geom_point() +
+  geom_abline() +
+  geom_smooth(method = "lm") +
+  scale_x_continuous() +
+  scale_y_continuous() 
+
+```
+
+## 10. Variable Importance
+
+The following code chunk will create a Variable Importance plot. 
+
+```{r}
+
+final_spec %>%
+  fit(yield ~ .,
+         data = bake(weather_prep, weather)) %>%
+    vi() %>%
+  mutate(
+    Variable = fct_reorder(Variable, 
+                           Importance)
+  ) %>%
+  ggplot(aes(x = Importance, 
+             y = Variable)) +
+  geom_col() +
+  scale_x_continuous(expand = c(0, 0)) +
+  labs(y = NULL)
+    
+```
+
