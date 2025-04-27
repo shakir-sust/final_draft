@@ -57,9 +57,9 @@ library(finetune)
 The following code chunk will import "weather_monthsum.csv" data file.
 
 ```{r import, message=F, warning=F}
-weather <- read_csv("../data/weather_monthsum.csv")
+weather_rf <- read_csv("../data/weather_monthsum.csv")
 
-weather
+weather_rf
 ```
 
 # ML workflow  
@@ -75,19 +75,19 @@ The following code chunks will conduct data split (70% training / 30% testing).
 set.seed(931735)
 
 # Setting split level  
-weather_split <- initial_split(weather, 
+weather_split_rf <- initial_split(weather_rf, 
                                prop = .7,
                                strata = yield) # strata = yield: to do stratified sampling based on yield to make sure the distribution of strength across training and testing are similar
 
-weather_split
+weather_split_rf
 ```
 The following code chunk will conduct setting train set.
 
 ```{r weather_train, message=F, warning=F}
 # Setting train set 
-weather_train <- training(weather_split)
+weather_train_rf <- training(weather_split_rf)
 
-weather_train
+weather_train_rf
 ```
 
 The following code chunk will conduct setting test split.
@@ -95,9 +95,9 @@ The following code chunk will conduct setting test split.
 
 ```{r weather_test, message=F, warning=F}
 # Setting test split
-weather_test <- testing(weather_split)
+weather_test_rf <- testing(weather_split_rf)
 
-weather_test
+weather_test_rf
 ```
 
 ### b. Distribution of target variable "yield"
@@ -106,10 +106,10 @@ The following code chunk will create a density plot to compare target variable "
 
 ```{r distribution, message=F, warning=F}
 ggplot() +
-  geom_density(data = weather_train, 
+  geom_density(data = weather_train_rf, 
                aes(x = yield),
                color = "red") +
-  geom_density(data = weather_test, 
+  geom_density(data = weather_test_rf, 
                aes(x = yield),
                color = "blue") 
   
@@ -120,10 +120,10 @@ ggplot() +
 The following code chunk will conduct data processing with recipe.
 
 ```{r weather_recipe}
-weather_recipe <-
+weather_recipe_rf <-
   # Defining predicted and predictor variables
   recipe(yield ~ .,
-         data = weather_train) %>%
+         data = weather_train_rf) %>%
   # Removing year and site  
     step_rm(year, 
             site, 
@@ -132,17 +132,17 @@ weather_recipe <-
   # Normalizing all numeric variables except predicted variable
   #step_normalize(all_numeric(), -all_outcomes())
 
-weather_recipe
+weather_recipe_rf
 ```
 
 The following code chunk will prep the recipe to estimate any required statistics.
 
 
 ```{r weather_prep}
-weather_prep <- weather_recipe %>%
+weather_prep_rf <- weather_recipe_rf %>%
   prep()
 
-weather_prep
+weather_prep_rf
 ```
 
 ## 2. Training
@@ -173,16 +173,17 @@ The following code chunk will conduct 5-fold cross-validation to evaluate model 
 
 ```{r resampling_foldcv}
 set.seed(34549)
-resampling_foldcv <- vfold_cv(weather_train, 
+resampling_foldcv_rf <- vfold_cv(weather_train_rf, 
                               v = 5) #but at least 10 folds are recommended
 
-resampling_foldcv
-resampling_foldcv$splits[[1]]
-resampling_foldcv$splits[[2]]
+resampling_foldcv_rf
+resampling_foldcv_rf$splits[[1]]
+resampling_foldcv_rf$splits[[2]]
 ```
 
 ### c. Grid search based on simulated annealing 
 
+*Note:Do NOT run this code chunk if you plan to run the 2 following code chunks*
 *Note: the following code chunk took ~18 hrs to run*
 
 The following code chunk will conduct grid search to fine tune the model based on an iterative search algorithm called simulated annealing.
@@ -238,8 +239,8 @@ set.seed(76544)
 #registerDoParallel(cores = parallel::detectCores()-1) #starts parallel processing
 
 rf_grid_result <- tune_race_anova(object = rf_spec,
-                      preprocessor = weather_recipe,
-                      resamples = resampling_foldcv,
+                      preprocessor = weather_recipe_rf,
+                      resamples = resampling_foldcv_rf,
                       grid = rf_grid_latin,
                       control = control_race(save_pred = TRUE))
 
@@ -247,7 +248,7 @@ rf_grid_result <- tune_race_anova(object = rf_spec,
 
 beepr::beep()
 
-xgb_res$.metrics[[2]]
+rf_grid_result$.metrics[[2]]
 
 ```
 

@@ -156,8 +156,8 @@ The following code chunk will fine tune the "trees", "tree_depth", "min_n", and 
 xgb_spec <- boost_tree(
   trees = tune(),
   tree_depth = tune(),  # Maximum depth of each tree
-  min_n = tune(),  # Minimum samples required to split a node
-  learn_rate = tune()
+  #min_n = tune(),  # Minimum samples required to split a node
+  #learn_rate = tune()
   ) %>% #Specifying XgBoost as our model type, asking to tune the hyperparameters
   set_engine("xgboost") %>% #specify engine 
   set_mode("regression")  # Set to mode
@@ -192,8 +192,8 @@ The following code chunk will use Latin hypercube sampling to generate a diverse
 xgb_grid <- grid_latin_hypercube(
   trees(),
   tree_depth(),
-  min_n(),
-  learn_rate(),
+  #min_n(),
+  #learn_rate(),
   size = 20
 )
 
@@ -203,14 +203,16 @@ xgb_grid
 
 The following code chunk will plot the hyperparameter combinations.
 
+Note: The plot will not generate if "min_n" and "learn_rate" were not fine tuned.
+
 ```{r}
-ggplot(data = xgb_grid,
-       aes(x = tree_depth, 
-           y = min_n)) +
-  geom_point(aes(color = factor(learn_rate), #coloring the bubbles based on learn_rate
-                 size = trees), #size of the bubbles are based on the tress
-             alpha = .5,
-             show.legend = FALSE)
+#ggplot(data = xgb_grid,
+       #aes(x = tree_depth, 
+           #y = min_n)) +
+  #geom_point(aes(color = factor(learn_rate), #coloring the bubbles based on learn_rate
+                 #size = trees), #size of the bubbles are based on the tress
+             #alpha = .5,
+             #show.legend = FALSE)
 ```
 
 ## 3. Model Tuning
@@ -428,7 +430,7 @@ final_fit %>%
 
 ```
 
-The following code chunk will show RMSE and R2 in the Predicted vs Observed Plot.
+*The following code chunk will show RMSE and R2 in the Predicted vs Observed Plot.*
 
 ```{r pred_vs_obs_with_metrics, message=FALSE, warning=FALSE}
 
