@@ -81,7 +81,7 @@ The following code chunk will conduct setting train set.
 
 weather_train <- training(weather_split)  # 70% of data
 
-weather_train #This is your traing data frame
+weather_train #This is the traing data frame
 
 ```
 
