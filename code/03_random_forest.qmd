@@ -221,6 +221,7 @@ rf_grid_latin <- grid_latin_hypercube(
 rf_grid_latin
 
 ```
+
 The following code chunk will conduct model tuning.
 
 ```{r xgb_grid_result}
