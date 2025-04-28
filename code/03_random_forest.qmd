@@ -153,8 +153,6 @@ The following code chunk will conduct model specification.
   
 ```{r rf_spec}
 
-rm(rf_spec)
-
 rf_spec <- 
   # Specifying random forest as our model type, asking to tune the hyperparameters
   rand_forest(trees = tune(),
