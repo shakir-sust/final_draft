@@ -153,10 +153,13 @@ The following code chunk will conduct model specification.
   
 ```{r rf_spec}
 
+rm(rf_spec)
+
 rf_spec <- 
   # Specifying random forest as our model type, asking to tune the hyperparameters
   rand_forest(trees = tune(),
-              mtry = tune() #both "trees" and "mtry" are model-type level hyperparameters, meaning that we fine tune "trees" and "mtry" inside "rand_forest()"
+              #mtry = tune(),
+              min_n = tune() #both "trees" and "mtry" are model-type level hyperparameters, meaning that we fine tune "trees" and "mtry" inside "rand_forest()"
               ) %>%
     # Specify the engine (= package)
     set_engine("ranger") %>% #specifying "ranger" as the engine/package to run random forest 
@@ -215,7 +218,7 @@ The following code chunk will use Latin hypercube sampling to generate a diverse
 
 rf_grid_latin <- grid_latin_hypercube(
   trees(),
-  mtry(),
+  min_n(),
   size = 20
 )
 
@@ -258,7 +261,7 @@ The following code chunk will collect RMSE as a summary of metrics (across all f
 rf_grid_result %>%
   collect_metrics() %>%
   filter(.metric == "rmse") %>%
-  ggplot(aes(x = mtry, 
+  ggplot(aes(x = min_n, 
              y = trees 
              )) +
   geom_path(group = 1) +
@@ -276,7 +279,7 @@ The following code chunk will collect R2 as a summary of metrics (across all fol
 rf_grid_result %>%
   collect_metrics() %>%
   filter(.metric == "rsq") %>%
-  ggplot(aes(x = mtry, 
+  ggplot(aes(x = min_n, 
              y = trees 
              )) +
   geom_path(group = 1) +
@@ -292,13 +295,14 @@ The following code chunk will select the best model by "2 percent loss" of RMSE.
 
 ```{r 2% loss of RMSE}
 # Based on lowest RMSE
-best_rmse <- rf_grid_result %>%
+
+best_rmse_rf <- rf_grid_result %>%
   select_by_pct_loss("trees",
                      metric = "rmse",
                      limit = 2 #"limit = 2": this is how many percent losses you are accepting, 2% in this case
                      )
 
-best_rmse
+best_rmse_rf
 
 ```
 
@@ -306,14 +310,15 @@ The following code chunk will select the best model by "2 percent loss" of R2.
 
 ```{r 2% loss of R2}
 # Based on greatest R2
-best_r2 <- rf_grid_result %>%
+
+best_r2_rf <- rf_grid_result %>%
   select_by_pct_loss("trees",
                      metric = "rsq",
                      limit = 2
                      )
 
 
-best_r2
+best_r2_rf
 
 ```
 
@@ -321,8 +326,9 @@ best_r2
 The following code chunk will use the hyperparameter values that optimized R2 to fit our final model.
 
 ```{r final_spec}
-final_spec <- rand_forest(trees = best_r2$trees,
-                          mtry = best_r2$mtry) %>%
+
+final_spec_rf <- rand_forest(trees = best_r2_rf$trees,
+                          min_n = best_r2_rf$min_n) %>%
   # Specify the engine
   set_engine("ranger",
              importance = "permutation" #"permutation" is how we look into variable importance in random forest
@@ -331,7 +337,7 @@ final_spec <- rand_forest(trees = best_r2$trees,
   set_mode("regression")
   
 
-final_spec
+final_spec_rf
 ```
 
 # 3. Validation  
@@ -346,11 +352,11 @@ The following code chunk will conduct the final fit and collect predictions.
 
 set.seed(10)
 
-final_fit <- last_fit(final_spec, 
-                weather_recipe,
-                split = weather_split)
+final_fit_rf <- last_fit(final_spec_rf, 
+                weather_recipe_rf,
+                split = weather_split_rf)
 
-final_fit %>%
+final_fit_rf %>%
   collect_predictions()
 ```
 
@@ -361,7 +367,7 @@ The following code chunk will collect fit metrics on the test set.
 
 
 ```{r Fit Metrics on Test Set}
-final_fit %>%
+final_fit_rf %>%
   collect_metrics()
 ```
 
@@ -372,23 +378,23 @@ The following code chunk will evaluate fit metrics on the train set.
 
 ```{r Fit Metrics on Training Set}
 # RMSE
-final_spec %>%
+final_spec_rf %>%
   fit(yield ~ .,
-      data = bake(weather_prep, 
-                  weather_train)) %>%
-  augment(new_data = bake(weather_prep, 
-                          weather_train)) %>% 
+      data = bake(weather_prep_rf, 
+                  weather_train_rf)) %>%
+  augment(new_data = bake(weather_prep_rf, 
+                          weather_train_rf)) %>% 
   rmse(yield, .pred) %>%
   bind_rows(
     
     
     # R2
-    final_spec %>%
+    final_spec_rf %>%
       fit(yield ~ .,
-          data = bake(weather_prep, 
-                      weather_train)) %>%
-      augment(new_data = bake(weather_prep, 
-                              weather_train)) %>% 
+          data = bake(weather_prep_rf, 
+                      weather_train_rf)) %>%
+      augment(new_data = bake(weather_prep_rf, 
+                              weather_train_rf)) %>% 
       rsq(yield, .pred)
     
   )
@@ -401,7 +407,7 @@ The following code chunk will create a Predicted vs Observed Plot.
 
 ```{r Predicted vs Observed Plot}
 
-final_fit %>%
+final_fit_rf %>%
   collect_predictions() %>%
   ggplot(aes(x = yield,
              y = .pred)) +
@@ -419,9 +425,9 @@ The following code chunk will create a Variable Importance plot.
 
 ```{r}
 
-final_spec %>%
+final_spec_rf %>%
   fit(yield ~ .,
-         data = bake(weather_prep, weather)) %>%
+         data = bake(weather_prep_rf, weather_rf)) %>%
     vi() %>%
   mutate(
     Variable = fct_reorder(Variable, 
